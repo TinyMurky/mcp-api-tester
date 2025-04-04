@@ -1,0 +1,18 @@
+NOTICE
+
+This project is licensed under the MIT License.
+Copyright (c) 2025 Tiny_Murky
+
+---
+
+Third-party components used in this project:
+
+1. Project: mcp-grafana
+   Source: https://github.com/grafana/mcp-grafana
+   License: Apache License 2.0
+   License URL: https://github.com/grafana/mcp-grafana/blob/main/LICENSE
+
+   Portions of the code in `tools/toolUtils/tools.go` are adapted from this project.
+   Modifications have been made to fit the requirements of this project.
+
+   Copyright (c) 2025 Grafana Labs
