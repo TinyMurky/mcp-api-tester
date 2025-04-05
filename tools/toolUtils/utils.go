@@ -42,6 +42,7 @@ func (tool *Tool) Register(srv *server.MCPServer) {
 func MustTool[T any, R any](name, description string, toolHandler ToolHandlerFunc[T, R]) Tool {
 	tool, handler, err := ConvertTool(name, description, toolHandler)
 	if err != nil {
+		fmt.Println("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 		panic(err)
 	}
 	return Tool{Tool: tool, Handler: handler}
@@ -73,11 +74,13 @@ func ConvertTool[Args any, Response any](
 		Required:   toolFuncSchema.Required,
 	}
 
+	handlerFunc := createMCPHandlerFunc(toolHandler)
+
 	return mcp.Tool{
 		Name:        name,
 		Description: description,
 		InputSchema: toolInputSchema,
-	}, nil, nil
+	}, handlerFunc, nil
 }
 
 func createMCPHandlerFunc[Args any, Response any](toolFunc ToolHandlerFunc[Args, Response]) server.ToolHandlerFunc {

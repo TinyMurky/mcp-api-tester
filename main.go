@@ -7,7 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"mcp-api-tester/tools"
+	listallapifromdocument "mcp-api-tester/tools/listAllAPIFromDocument"
+	readopenapidocument "mcp-api-tester/tools/readOpenAPIDocument"
 
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -60,7 +61,8 @@ func newMCPServer() *server.MCPServer {
 		"0.0.1",
 	)
 
-	tools.RegisterAllTools(srv)
+	readopenapidocument.AddReadOpenAPIDocumentTool(srv)
+	listallapifromdocument.AddListAllAPIFromDocumentTool(srv)
 
 	return srv
 }

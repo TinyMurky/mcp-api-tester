@@ -152,3 +152,34 @@ These tools are not mandatory, but they can significantly improve automated test
 
 - **Cannot Completely Replace Traditional Testing**
   - While the LLM can quickly produce boundary and abnormal test cases, traditional unit tests remain essential for thorough coverage.
+
+# Test
+
+> ReadOpenAPIDocument
+
+```bash
+curl -X POST --data '{
+"jsonrpc": "2.0",
+"id": 1,
+"method": "tools/call",
+"params": {
+  "name": "ReadOpenAPIDocument",
+  "arguments": {
+    "openAPIPath": "/absolute/path/to/your/openAPI/file"
+  }
+}
+}' http://localhost:8000/message?sessionId=9fa4fc8c-1799-4955-a0bb-4881258f13f9
+```
+
+> ListAllAPIFromDocument
+
+```bash
+curl -X POST --data '{
+"jsonrpc": "2.0",
+"id": 1,
+"method": "tools/call",
+"params": {
+  "name": "ListAllAPIFromDocument"
+}
+}' http://localhost:8000/message?sessionId=9fa4fc8c-1799-4955-a0bb-4881258f13f9
+```
