@@ -65,6 +65,7 @@ func (o *OpenAPI) ListAllAPIFromDocument() []SimplifyAPI {
 	return simplifyAPIs
 }
 
+// GetOneAPIByPath will return *v3high.Operation by giving path and method
 func (o *OpenAPI) GetOneAPIByPath(path string, method string) (*v3high.Operation, error) {
 	methodLower := strings.ToLower(method)
 
@@ -80,7 +81,7 @@ func (o *OpenAPI) GetOneAPIByPath(path string, method string) (*v3high.Operation
 	}
 
 	if !allowMethod[methodLower] {
-		return nil, fmt.Errorf("Method %g is not allowed", method)
+		return nil, fmt.Errorf("Method %q is not allowed", method)
 	}
 
 	var pathItem *v3high.PathItem

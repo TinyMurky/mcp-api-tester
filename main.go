@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	getsingleapidetail "mcp-api-tester/tools/getSingleAPIDetail"
 	listallapifromdocument "mcp-api-tester/tools/listAllAPIFromDocument"
 	readopenapidocument "mcp-api-tester/tools/readOpenAPIDocument"
 
@@ -63,6 +64,7 @@ func newMCPServer() *server.MCPServer {
 
 	readopenapidocument.AddReadOpenAPIDocumentTool(srv)
 	listallapifromdocument.AddListAllAPIFromDocumentTool(srv)
+	getsingleapidetail.AddGetSingleAPIDetailTool(srv)
 
 	return srv
 }
