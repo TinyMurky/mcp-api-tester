@@ -1,0 +1,13 @@
+{
+    "servers": {
+        "my-mcp-api-tester-server": {
+            "type": "stdio",
+            "command": "wsl.exe",
+            "args": [
+                "bash",
+                "-c",
+                "~/code/github/mcp-api-tester/mcp-api-tester"
+            ]
+        }
+    }
+}
