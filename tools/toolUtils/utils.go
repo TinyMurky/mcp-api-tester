@@ -1,4 +1,4 @@
-// Package toolUtils provides utility functions for tool handling.
+// Package toolutils provides utility functions for tool handling.
 //
 // Portions of this file are adapted from:
 // https://github.com/grafana/mcp-grafana/blob/main/tools.go
@@ -9,7 +9,7 @@
 // Modifications were made to fit this project's requirements.
 //
 // To study reflect package check: https://darjun.github.io/2021/05/27/godailylib/reflect/
-package toolUtils
+package toolutils
 
 import (
 	"context"
@@ -23,30 +23,58 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// Tool Struct can be register to mcp server
+// createJSONSchemaFromToolHandlerFunc will get second args type
+// of ToolHandlerFunc and get struct schema
+func createJSONSchemaFromToolHandlerFunc(toolFunc any) *jsonschema.Schema {
+
+	// this will return like func(type, type)
+	funcType := reflect.ValueOf(toolFunc).Type()
+
+	// if arg is struct type, we can get struct and parse by json
+	secondArgType := funcType.In(1)
+	schema := jsonSchemaReflector.ReflectFromType(secondArgType)
+
+	return schema
+}
+
+// Tool is a struct that represents a tool definition and the function used
+// to handle tool calls.
+//
+// The simplest way to create a Tool is to use `MustTool`, or `ConvertTool`
+// if you wish to create tools at runtime and need to handle errors without
+// panicking.
 type Tool struct {
 	Tool    mcp.Tool
 	Handler server.ToolHandlerFunc
 }
 
-// ToolHandlerFunc can be parse to generate Tool then be register
-type ToolHandlerFunc[Args any, Response any] func(ctx context.Context, argument Args) (Response, error)
-
-// Register Tool to MCP Server
-func (tool *Tool) Register(srv *server.MCPServer) {
-	srv.AddTool(tool.Tool, tool.Handler)
+// Register adds the Tool to the given MCPServer.
+//
+// It is a convenience method that calls `server.MCPServer.Register` with the
+// Tool's Tool and Handler fields, allowing you to add the tool in a single
+// statement:
+//
+//	mcpgrafana.MustTool(name, description, toolHandler).Register(server)
+func (t *Tool) Register(mcp *server.MCPServer) {
+	mcp.AddTool(t.Tool, t.Handler)
 }
 
 // MustTool creates a new Tool from the given name, description, and toolHandler.
 // It panics if the tool cannot be created.
-func MustTool[T any, R any](name, description string, toolHandler ToolHandlerFunc[T, R]) Tool {
-	tool, handler, err := ConvertTool(name, description, toolHandler)
+func MustTool[T any, R any](
+	name, description string,
+	toolHandler ToolHandlerFunc[T, R],
+	options ...mcp.ToolOption,
+) Tool {
+	tool, handler, err := ConvertTool(name, description, toolHandler, options...)
 	if err != nil {
-		fmt.Println("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 		panic(err)
 	}
 	return Tool{Tool: tool, Handler: handler}
 }
+
+// ToolHandlerFunc is the type of a handler function for a tool.
+type ToolHandlerFunc[T any, R any] = func(ctx context.Context, request T) (R, error)
 
 // ConvertTool converts a toolHandler function to a Tool and ToolHandlerFunc.
 //
@@ -54,71 +82,46 @@ func MustTool[T any, R any](name, description string, toolHandler ToolHandlerFun
 // to be used as the parameters for the tool. The second argument must not be a pointer,
 // should be marshalable to JSON, and the fields should have a `jsonschema` tag with the
 // description of the parameter.
-func ConvertTool[Args any, Response any](
-	name string,
-	description string,
-	toolHandler ToolHandlerFunc[Args, Response],
-) (mcp.Tool, server.ToolHandlerFunc, error) {
-	toolFuncSchema := createJSONSchemaFromToolHandlerFunc(toolHandler)
-
-	// this contain property like mcp.Description...
-	properties := make(map[string]interface{}, toolFuncSchema.Properties.Len())
-
-	for pair := toolFuncSchema.Properties.Oldest(); pair != nil; pair = pair.Next() {
-		properties[pair.Key] = pair.Value // value is *jsonschema.Schema
-	}
-
-	toolInputSchema := mcp.ToolInputSchema{
-		Type:       toolFuncSchema.Type,
-		Properties: properties, // I don't know why this work
-		Required:   toolFuncSchema.Required,
-	}
-
-	handlerFunc := createMCPHandlerFunc(toolHandler)
-
-	return mcp.Tool{
-		Name:        name,
-		Description: description,
-		InputSchema: toolInputSchema,
-	}, handlerFunc, nil
-}
-
-func createMCPHandlerFunc[Args any, Response any](toolFunc ToolHandlerFunc[Args, Response]) server.ToolHandlerFunc {
-	handlerValue := reflect.ValueOf(toolFunc)
+func ConvertTool[T any, R any](name, description string, toolHandler ToolHandlerFunc[T, R], options ...mcp.ToolOption) (mcp.Tool, server.ToolHandlerFunc, error) {
+	zero := mcp.Tool{}
+	handlerValue := reflect.ValueOf(toolHandler)
 	handlerType := handlerValue.Type()
+	if handlerType.Kind() != reflect.Func {
+		return zero, nil, errors.New("tool handler must be a function")
+	}
+	if handlerType.NumIn() != 2 {
+		return zero, nil, errors.New("tool handler must have 2 arguments")
+	}
+	if handlerType.NumOut() != 2 {
+		return zero, nil, errors.New("tool handler must return 2 values")
+	}
+	if handlerType.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
+		return zero, nil, errors.New("tool handler first argument must be context.Context")
+	}
+	// We no longer check the type of the first return value
+	if handlerType.Out(1).Kind() != reflect.Interface {
+		return zero, nil, errors.New("tool handler second return value must be error")
+	}
 
-	// Get the second parameter's type of the toolFunc, which represents the actual request argument type
-	secondArgType := handlerType.In(1)
+	argType := handlerType.In(1)
+	if argType.Kind() != reflect.Struct {
+		return zero, nil, errors.New("tool handler second argument must be a struct")
+	}
 
 	handler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// The request.Params.Arguments is of type `map[string]interface{}` (decoded JSON)
-		// We need to convert it into the actual argument type `Args` for toolFunc
 
-		// Step 1: Marshal the map[string]interface{} back into JSON
 		s, err := json.Marshal(request.Params.Arguments)
-
 		if err != nil {
-			return nil, fmt.Errorf("Marshal request.Params.Arguments failed, origin args: %v, error is: %w", request.Params.Arguments, err)
+			return nil, fmt.Errorf("marshal args: %w", err)
 		}
 
-		// Step 2: Create a new zero value of the expected argument type (Args)
-		// - reflect.New(secondArgType) returns a reflect.Value of type *T (pointer to the type)
-		// - .Interface() wraps that pointer into an interface{} so we can use it in json.Unmarshal
-		//
-		// For example:
-		//   If secondArgType is `main.Cat`, reflect.New returns `*main.Cat`
-		//   So the resulting value is: (type: *main.Cat, value: <*main.Cat Value>)
-		//   This is still an interface{}, but it holds the concrete pointer to Cat under the hood
-		unmarshaledArgs := reflect.New(secondArgType).Interface()
-
-		// Step 3. Write marshal json from LLM Arguments input to the Args struct that toolFunc second Argument is
+		unmarshaledArgs := reflect.New(argType).Interface()
 		if err := json.Unmarshal([]byte(s), unmarshaledArgs); err != nil {
-			return nil, fmt.Errorf("request.Params.Arguments unmarshal to args failed, error: %w", err)
+			return nil, fmt.Errorf("unmarshal args: %s", err)
 		}
 
+		// Need to dereference the unmarshaled arguments
 		of := reflect.ValueOf(unmarshaledArgs)
-
-		// Step 3.1 unmarshaledArgs should be a pointer point to args type of second input of toolFunc
 		if of.Kind() != reflect.Ptr || !of.Elem().CanInterface() {
 			return nil, errors.New("arguments must be a struct")
 		}
@@ -126,35 +129,29 @@ func createMCPHandlerFunc[Args any, Response any](toolFunc ToolHandlerFunc[Args,
 		args := []reflect.Value{reflect.ValueOf(ctx), of.Elem()}
 
 		output := handlerValue.Call(args)
-
-		// Step 4, Check if output is validate
 		if len(output) != 2 {
 			return nil, errors.New("tool handler must return 2 values")
 		}
-
-		if !output[0].CanInterface() { // Can output[0] be convert to interface{}, aka no unexported lower case field
+		if !output[0].CanInterface() {
 			return nil, errors.New("tool handler first return value must be interfaceable")
 		}
 
-		// Step 5, handle Error first, the second response of toolFunc Should be error
+		// Handle the error return value first
 		var handlerErr error
 		var ok bool
-
-		if output[1].Kind() == reflect.Interface && !output[1].IsNil() { // make sure output[1] has value and is interface(error is interface)
+		if output[1].Kind() == reflect.Interface && !output[1].IsNil() {
 			handlerErr, ok = output[1].Interface().(error)
 			if !ok {
 				return nil, errors.New("tool handler second return value must be error")
 			}
 		}
 
-		// Step 5.1 after make sure  output[1] is error interface, return if not nil
+		// If there's an error, return nil result and the error
 		if handlerErr != nil {
-			// We use NewToolResultError to tell LLM what error has happened
-			// return nil, handlerErr
-			return NewToolResultError(handlerErr.Error()), nil
+			return nil, handlerErr
 		}
 
-		// Step 6 Check if the first return value is nil (only for pointer, interface, map, etc.)
+		// Check if the first return value is nil (only for pointer, interface, map, etc.)
 		isNilable := output[0].Kind() == reflect.Ptr ||
 			output[0].Kind() == reflect.Interface ||
 			output[0].Kind() == reflect.Map ||
@@ -166,19 +163,16 @@ func createMCPHandlerFunc[Args any, Response any](toolFunc ToolHandlerFunc[Args,
 			return nil, nil
 		}
 
-		// Step7 use interface to change the type of output to any
 		returnVal := output[0].Interface()
 		returnType := output[0].Type()
 
-		// Step 8 return base on case
-
-		// Case 1: Already a *mcp.CallToolResult (case any to *mcp.CallToolResult to check if is ok)
+		// Case 1: Already a *mcp.CallToolResult
 		if callResult, ok := returnVal.(*mcp.CallToolResult); ok {
 			return callResult, nil
 		}
 
-		// Case 2: An mcp.CallToolResult (not a pointer), need to return pointer
-		if returnType.ConvertibleTo(reflect.TypeOf(mcp.CallToolResult{})) { // can be convert to mcp.CallToolResult{}
+		// Case 2: An mcp.CallToolResult (not a pointer)
+		if returnType.ConvertibleTo(reflect.TypeOf(mcp.CallToolResult{})) {
 			callResult := returnVal.(mcp.CallToolResult)
 			return &callResult, nil
 		}
@@ -206,40 +200,54 @@ func createMCPHandlerFunc[Args any, Response any](toolFunc ToolHandlerFunc[Args,
 
 		return mcp.NewToolResultText(string(jsonBytes)), nil
 	}
-	return handler
+
+	jsonSchema := createJSONSchemaFromHandler(toolHandler)
+	properties := make(map[string]any, jsonSchema.Properties.Len())
+	for pair := jsonSchema.Properties.Oldest(); pair != nil; pair = pair.Next() {
+		properties[pair.Key] = pair.Value
+	}
+	inputSchema := mcp.ToolInputSchema{
+		Type:       jsonSchema.Type,
+		Properties: properties,
+		Required:   jsonSchema.Required,
+	}
+
+	t := mcp.Tool{
+		Name:        name,
+		Description: description,
+		InputSchema: inputSchema,
+	}
+	for _, option := range options {
+		option(&t)
+	}
+	return t, handler, nil
+}
+
+// Creates a full JSON schema from a user provided handler by introspecting the arguments
+func createJSONSchemaFromHandler(handler any) *jsonschema.Schema {
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+	argumentType := handlerType.In(1)
+	inputSchema := jsonSchemaReflector.ReflectFromType(argumentType)
+	return inputSchema
 }
 
 var (
-	// This special reflector can extract from struct description that start with `jsonschema`
 	jsonSchemaReflector = jsonschema.Reflector{
-		// BaseSchemaID:               "",
-		// Anonymous:                  true,
-		// AssignAnchor:               false,
-		// AllowAdditionalProperties:  true,
-		RequiredFromJSONSchemaTags: true, // generate a schema that requires any key tagged with `jsonschema:required`
-		DoNotReference:             true, // This can let return of ReflectFromType (which is *jsonschema.Schema) actually get property
-		// ExpandedStruct:             true,
-		// FieldNameTag:               "",
-		// IgnoredTypes:               nil,
-		// Lookup:                     nil,
-		// Mapper:                     nil,
-		// Namer:                      nil,
-		// KeyNamer:                   nil,
-		// AdditionalFields:           nil,
-		// CommentMap:                 nil,
+		BaseSchemaID:               "",
+		Anonymous:                  true,
+		AssignAnchor:               false,
+		AllowAdditionalProperties:  true,
+		RequiredFromJSONSchemaTags: true,
+		DoNotReference:             true,
+		ExpandedStruct:             true,
+		FieldNameTag:               "",
+		IgnoredTypes:               nil,
+		Lookup:                     nil,
+		Mapper:                     nil,
+		Namer:                      nil,
+		KeyNamer:                   nil,
+		AdditionalFields:           nil,
+		CommentMap:                 nil,
 	}
 )
-
-// createJSONSchemaFromToolHandlerFunc will get second args type
-// of ToolHandlerFunc and get struct schema
-func createJSONSchemaFromToolHandlerFunc(toolFunc any) *jsonschema.Schema {
-
-	// this will return like func(type, type)
-	funcType := reflect.ValueOf(toolFunc).Type()
-
-	// if arg is struct type, we can get struct and parse by json
-	secondArgType := funcType.In(1)
-	schema := jsonSchemaReflector.ReflectFromType(secondArgType)
-
-	return schema
-}

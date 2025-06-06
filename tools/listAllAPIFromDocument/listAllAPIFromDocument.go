@@ -8,7 +8,7 @@ import (
 	"fmt"
 	openapi "mcp-api-tester/openAPI"
 	"mcp-api-tester/tools"
-	"mcp-api-tester/tools/toolUtils"
+	toolutils "mcp-api-tester/tools/toolUtils"
 
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -34,7 +34,7 @@ func listAllAPIFromDocument(_ context.Context, _ Param) (string, error) {
 }
 
 // ListAllAPIFromDocumentTool can register readOpenAPIDocument to MCP Server
-var ListAllAPIFromDocumentTool = toolUtils.MustTool(
+var ListAllAPIFromDocumentTool = toolutils.MustTool(
 	tools.ListAllAPIFromDocument,
 	fmt.Sprintf("%s will list all api and method from openAPI, Please use %q to tool OpenAPI file first", tools.ListAllAPIFromDocument, tools.ReadOpenAPIDocument),
 	listAllAPIFromDocument,

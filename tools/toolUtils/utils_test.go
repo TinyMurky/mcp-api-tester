@@ -1,4 +1,4 @@
-package toolUtils
+package toolutils
 
 import (
 	"testing"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	openapi "mcp-api-tester/openAPI"
 	"mcp-api-tester/tools"
-	"mcp-api-tester/tools/toolUtils"
+	toolutils "mcp-api-tester/tools/toolUtils"
 
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 
@@ -35,7 +35,7 @@ func getSingleAPIDetail(_ context.Context, args Param) (*v3high.Operation, error
 }
 
 // GetSingleAPIDetailTool can register getSingleAPIDetail to MCP Server
-var GetSingleAPIDetailTool = toolUtils.MustTool(
+var GetSingleAPIDetailTool = toolutils.MustTool(
 	tools.GetSingleAPIDetail,
 	fmt.Sprintf("%s will return api details of a single method of certain url", tools.GetSingleAPIDetail),
 	getSingleAPIDetail,
